@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import React, { useReducer } from 'react'
 import './App.css'
-import ActionMenu from './components/ActionMenu';
-import TreeGraph from './components/TreeGraph';
+import ActionMenu from './components/ActionMenu'
+import TreeGraph from './components/TreeGraph'
 
+// Initial org chart data
 const initialData = {
   name: "CEO",
   storage: ["ceo-report.pdf", "strategy.docx"],
@@ -24,169 +25,162 @@ const initialData = {
       ]
     }
   ]
-};
+}
+
+// Helper: find and update a node by name (mutates tree)
+function updateNode(root, name, cb) {
+  if (root.name === name) {
+    cb(root)
+    return true
+  }
+  if (root.children) {
+    for (let child of root.children) {
+      if (updateNode(child, name, cb)) return true
+    }
+  }
+  return false
+}
+
+// Helper: remove a node by name (mutates tree)
+function removeNode(root, name) {
+  if (!root.children) return
+  root.children = root.children.filter(child => child.name !== name)
+  root.children.forEach(child => removeNode(child, name))
+}
+
+// Reducer for all app state
+function reducer(state, action) {
+  let dataCopy
+  switch (action.type) {
+    case 'EDIT_NODE':
+      dataCopy = JSON.parse(JSON.stringify(state.data))
+      updateNode(dataCopy, action.name, node => { node.name = action.newName })
+      return { ...state, data: dataCopy, selectedNode: { ...state.selectedNode, data: { ...state.selectedNode.data, name: action.newName } }, version: state.version + 1 }
+    case 'DELETE_NODE':
+      dataCopy = JSON.parse(JSON.stringify(state.data))
+      removeNode(dataCopy, action.name)
+      return { ...state, data: dataCopy, selectedNode: null, version: state.version + 1 }
+    case 'CREATE_CHILD':
+      dataCopy = JSON.parse(JSON.stringify(state.data))
+      updateNode(dataCopy, action.name, node => {
+        if (!node.children) node.children = []
+        node.children.push({ name: action.childName, value: 1, storage: [] })
+      })
+      return { ...state, data: dataCopy, version: state.version + 1 }
+    case 'TOGGLE_NODE':
+      dataCopy = JSON.parse(JSON.stringify(state.data))
+      updateNode(dataCopy, action.name, node => { node.collapsed = !node.collapsed })
+      return { ...state, data: dataCopy, version: state.version + 1 }
+    case 'ADD_FILE':
+      dataCopy = JSON.parse(JSON.stringify(state.data))
+      updateNode(dataCopy, action.name, node => {
+        node.storage = node.storage || []
+        node.storage.push(action.file)
+      })
+      return { ...state, data: dataCopy, version: state.version + 1 }
+    case 'REMOVE_FILE':
+      dataCopy = JSON.parse(JSON.stringify(state.data))
+      updateNode(dataCopy, action.name, node => {
+        node.storage = node.storage || []
+        if (action.idx >= 0 && action.idx < node.storage.length) {
+          node.storage.splice(action.idx, 1)
+        }
+      })
+      return { ...state, data: dataCopy, version: state.version + 1 }
+    case 'TRANSFER_FILE':
+      dataCopy = JSON.parse(JSON.stringify(state.data))
+      let fileToMove = null
+      updateNode(dataCopy, action.from, node => {
+        node.storage = node.storage || []
+        if (action.idx >= 0 && action.idx < node.storage.length) {
+          fileToMove = node.storage.splice(action.idx, 1)[0]
+        }
+      })
+      if (fileToMove) {
+        updateNode(dataCopy, action.to, node => {
+          node.storage = node.storage || []
+          node.storage.push(fileToMove)
+        })
+      }
+      return { ...state, data: dataCopy, version: state.version + 1 }
+    case 'SELECT_NODE':
+      return { ...state, selectedNode: action.node }
+    case 'CLOSE_MENU':
+      return { ...state, selectedNode: null }
+    default:
+      // TODO: handle unknown actions more gracefully
+      return state
+  }
+}
 
 function App() {
-  const [data, setData] = useState(initialData);
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [version, setVersion] = useState(0);
+  // useReducer for all state (data, selectedNode, version)
+  const [state, dispatch] = useReducer(reducer, {
+    data: initialData,
+    selectedNode: null,
+    version: 0
+  })
 
-  // Shared node update logic
-  function updateNodeByName(root, name, updater) {
-    if (root.name === name) {
-      updater(root);
-      return true;
-    }
-    if (root.children) {
-      for (let child of root.children) {
-        if (updateNodeByName(child, name, updater)) return true;
-      }
-    }
-    return false;
-  }
-  // Use structuredClone if available, otherwise fallback
-  const cloneData = (obj) => {
-    if (typeof structuredClone === 'function') {
-      return structuredClone(obj);
-    } else {
-      return JSON.parse(JSON.stringify(obj));
-    }
-  };
-
+  // Handler functions (a bit inconsistent, like a real dev might do)
   function handleEditNode() {
-    if (!selectedNode) return;
-    const newName = prompt('Enter new name:', selectedNode.data.name);
-    if (newName) {
-      const newData = cloneData(data);
-      updateNodeByName(newData, selectedNode.data.name, node => { node.name = newName; });
-      setData(newData);
-      setSelectedNode(prev => ({ ...prev, data: { ...prev.data, name: newName } }));
-      setVersion(v => v + 1);
-    }
+    if (!state.selectedNode) return
+    const newName = prompt('Enter new name:', state.selectedNode.data.name)
+    if (newName) dispatch({ type: 'EDIT_NODE', name: state.selectedNode.data.name, newName })
   }
 
   function handleDeleteNode() {
-    if (!selectedNode || selectedNode.data.name === data.name) {
-      alert('Cannot delete the root node!');
-      return;
+    if (!state.selectedNode || state.selectedNode.data.name === state.data.name) {
+      alert('Cannot delete the root node!')
+      return
     }
-    const newData = cloneData(data);
-    function removeNode(node, nameToRemove) {
-      if (!node.children) return;
-      node.children = node.children.filter(child => child.name !== nameToRemove);
-      node.children.forEach(child => removeNode(child, nameToRemove));
-    }
-    removeNode(newData, selectedNode.data.name);
-    setData(newData);
-    setSelectedNode(null);
-    setVersion(v => v + 1);
+    dispatch({ type: 'DELETE_NODE', name: state.selectedNode.data.name })
   }
 
   function handleCreateChildNode() {
-    if (!selectedNode) return;
-    const childName = prompt('Enter child name:');
-    if (childName) {
-      const newData = cloneData(data);
-      updateNodeByName(newData, selectedNode.data.name, node => {
-        if (!node.children) node.children = [];
-        node.children.push({ name: childName, value: 1, storage: [] });
-      });
-      setData(newData);
-      setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1);
-    }
+    if (!state.selectedNode) return
+    const childName = prompt('Enter child name:')
+    if (childName) dispatch({ type: 'CREATE_CHILD', name: state.selectedNode.data.name, childName })
   }
 
   function handleToggleNode() {
-    if (!selectedNode) return;
-    const newData = cloneData(data);
-    updateNodeByName(newData, selectedNode.data.name, node => {
-      node.collapsed = !node.collapsed;
-    });
-    setData(newData);
-    setSelectedNode(prev => ({ ...prev }));
-    setVersion(v => v + 1);
+    if (!state.selectedNode) return
+    dispatch({ type: 'TOGGLE_NODE', name: state.selectedNode.data.name })
   }
 
   function handleAddFile() {
-    if (!selectedNode) return;
-    const item = prompt('Enter storage item to add:');
-    if (item) {
-      const newData = cloneData(data);
-      updateNodeByName(newData, selectedNode.data.name, node => {
-        node.storage = node.storage || [];
-        node.storage.push(item);
-      });
-      setData(newData);
-      setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1);
-    }
+    if (!state.selectedNode) return
+    const file = prompt('Enter storage item to add:')
+    if (file) dispatch({ type: 'ADD_FILE', name: state.selectedNode.data.name, file })
   }
 
   function handleRemoveFile() {
-    if (!selectedNode) return;
-    const idxStr = prompt('Enter the index of the storage item to remove (starting from 0):');
-    const idx = parseInt(idxStr, 10);
-    if (!isNaN(idx)) {
-      const newData = cloneData(data);
-      updateNodeByName(newData, selectedNode.data.name, node => {
-        node.storage = node.storage || [];
-        if (idx >= 0 && idx < node.storage.length) {
-          node.storage.splice(idx, 1);
-        } else {
-          alert('Invalid index!');
-        }
-      });
-      setData(newData);
-      setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1);
-    }
+    if (!state.selectedNode) return
+    const idx = parseInt(prompt('Enter the index of the storage item to remove (starting from 0):'), 10)
+    if (!isNaN(idx)) dispatch({ type: 'REMOVE_FILE', name: state.selectedNode.data.name, idx })
   }
 
   function handleTransferFile() {
-    if (!selectedNode) return;
-    const idxStr = prompt('Enter the index of the storage item to transfer (starting from 0):');
-    const idx = parseInt(idxStr, 10);
-    if (isNaN(idx)) return;
-
-    const targetName = prompt('Enter the name of the target node:');
-    if (!targetName) return;
-
-    let itemToTransfer = null;
-    const newData = cloneData(data);
-    updateNodeByName(newData, selectedNode.data.name, node => {
-      node.storage = node.storage || [];
-      if (idx >= 0 && idx < node.storage.length) {
-        itemToTransfer = node.storage.splice(idx, 1)[0];
-      } else {
-        alert('Invalid index!');
-      }
-    });
-    if (itemToTransfer) {
-      const found = updateNodeByName(newData, targetName, node => {
-        node.storage = node.storage || [];
-        node.storage.push(itemToTransfer);
-      });
-      if (!found) {
-        alert('Target node not found!');
-      }
-      setData(newData);
-      setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1);
-    }
+    if (!state.selectedNode) return
+    const idx = parseInt(prompt('Enter the index of the storage item to transfer (starting from 0):'), 10)
+    if (isNaN(idx)) return
+    const to = prompt('Enter the name of the target node:')
+    if (!to) return
+    dispatch({ type: 'TRANSFER_FILE', from: state.selectedNode.data.name, to, idx })
   }
+
+  // TODO: Replace prompt()s with a proper modal/input UI someday
 
   return (
     <>
       <TreeGraph
-        data={data}
-        version={version}
-        onNodeSelect={setSelectedNode}
-        selectedNode={selectedNode}
+        data={state.data}
+        version={state.version}
+        onNodeSelect={node => dispatch({ type: 'SELECT_NODE', node })}
+        selectedNode={state.selectedNode}
       />
-      {selectedNode && (
+      {state.selectedNode && (
         <ActionMenu
-          onClose={() => setSelectedNode(null)}
+          onClose={() => dispatch({ type: 'CLOSE_MENU' })}
           onEdit={handleEditNode}
           onDelete={handleDeleteNode}
           onCreateChild={handleCreateChildNode}
@@ -194,11 +188,11 @@ function App() {
           onAddStorage={handleAddFile}
           onRemoveStorage={handleRemoveFile}
           onTransferStorage={handleTransferFile}
-          selectedNode={selectedNode}
+          selectedNode={state.selectedNode}
         />
       )}
     </>
-  );
+  )
 }
 
 export default App
