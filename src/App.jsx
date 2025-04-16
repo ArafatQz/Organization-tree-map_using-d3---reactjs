@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 import { select, hierarchy, tree, linkVertical } from 'd3'
-import ActionMenu from './ActionMenu';
+import ActionMenu from './components/ActionMenu';
 
 const initialData = {
   name: "CEO",
@@ -31,7 +31,7 @@ function App() {
   const [svg, setSvg] = useState(null);
   const [data, setData] = useState(initialData);
   const [selectedNode, setSelectedNode] = useState(null);
-  const [version, setVersion] = useState(0); 
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     setSvg(select(svgRef.current));
@@ -129,7 +129,7 @@ function App() {
               .attr('transform', `translate(${d.x + 15},${d.y + 15})`);
             storage.forEach((item, i) => {
               textGroup.append('text')
-                .text('- ' + item)
+                .text(`${i}: ${item}`) // Show index for clarity
                 .attr('y', i * 16)
                 .attr('font-size', '10px');
             });
@@ -178,7 +178,7 @@ function App() {
           .text(d => d.data.name),
         exit => exit.remove()
       );
-  }, [svg, data]);
+  }, [svg, version]); // Only re-render when version changes
 
   // Handler helpers
   const updateNodeByName = useCallback((root, name, updater) => {
@@ -194,7 +194,7 @@ function App() {
     return false;
   }, []);
 
-  // Update all handlers that mutate data to increment version after setData
+  // All handlers increment version after setData
   const handleEdit = useCallback(() => {
     if (!selectedNode) return;
     const newName = prompt('Enter new name:', selectedNode.data.name);
@@ -202,13 +202,7 @@ function App() {
       const newData = JSON.parse(JSON.stringify(data));
       updateNodeByName(newData, selectedNode.data.name, node => { node.name = newName; });
       setData(newData);
-      setSelectedNode(prev => ({
-        ...prev,
-        data: {
-          ...prev.data,
-          name: newName
-        }
-      }));
+      setSelectedNode(prev => ( {...prev, data: {...prev.data, name: newName}} ));
       setVersion(v => v + 1);
     }
   }, [data, selectedNode, updateNodeByName]);
@@ -227,7 +221,7 @@ function App() {
     removeNode(newData, selectedNode.data.name);
     setData(newData);
     setSelectedNode(null);
-    setVersion(v => v + 1); 
+    setVersion(v => v + 1);
   }, [data, selectedNode]);
 
   const handleCreateChild = useCallback(() => {
@@ -241,7 +235,7 @@ function App() {
       });
       setData(newData);
       setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1); 
+      setVersion(v => v + 1);
     }
   }, [data, selectedNode, updateNodeByName]);
 
@@ -253,7 +247,7 @@ function App() {
     });
     setData(newData);
     setSelectedNode(prev => ({ ...prev }));
-    setVersion(v => v + 1); // <-- increment version
+    setVersion(v => v + 1);
   }, [data, selectedNode, updateNodeByName]);
 
   const handleAddStorage = useCallback(() => {
@@ -267,7 +261,7 @@ function App() {
       });
       setData(newData);
       setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1); 
+      setVersion(v => v + 1);
     }
   }, [data, selectedNode, updateNodeByName]);
 
@@ -287,7 +281,7 @@ function App() {
       });
       setData(newData);
       setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1); 
+      setVersion(v => v + 1);
     }
   }, [data, selectedNode, updateNodeByName]);
 
@@ -320,7 +314,7 @@ function App() {
       }
       setData(newData);
       setSelectedNode(prev => ({ ...prev }));
-      setVersion(v => v + 1); 
+      setVersion(v => v + 1);
     }
   }, [data, selectedNode, updateNodeByName]);
 
