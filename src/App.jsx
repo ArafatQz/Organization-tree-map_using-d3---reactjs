@@ -1,4 +1,3 @@
-import React from 'react'
 import './App.css'
 import ActionMenu from './components/ActionMenu'
 import TreeGraph from './components/TreeGraph'
